@@ -1,6 +1,6 @@
 // 서비스 워커: 앱 파일을 폰에 저장해 두고, 인터넷이 없어도 저장본으로 앱을 엶.
 // ※ index.html 등을 수정해서 다시 올릴 때는 아래 버전 숫자를 올려야 폰에 새 버전이 반영됨.
-const CACHE = 'todo-app-v1';
+const CACHE = 'todo-app-v2';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
