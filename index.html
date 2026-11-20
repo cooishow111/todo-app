@@ -17,10 +17,10 @@
   /* ── 색상: 라이트 / 다크 모드 ── */
   :root {
     --bg: #f2f2f7; --card: #ffffff; --text: #1c1c1e; --sub: #8e8e93;
-    --line: #e5e5ea; --accent: #0a84ff; --danger: #ff3b30; --warn: #ff9500; --sel: #ffeceb;
+    --line: #e5e5ea; --accent: #0a84ff; --danger: #ff3b30; --warn: #ff9500; --sel: #ffeceb; --green: #34c759;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #000000; --card: #1c1c1e; --text: #f2f2f7; --sub: #8e8e93; --line: #38383a; --sel: #3a1f1d; }
+    :root { --bg: #000000; --card: #1c1c1e; --text: #f2f2f7; --sub: #8e8e93; --line: #38383a; --sel: #3a1f1d; --green: #30d158; }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   [hidden] { display: none !important; }
@@ -65,8 +65,29 @@
   .fab-group { position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom));
     display: flex; gap: 12px; z-index: 5; }
   .fab { width: 60px; height: 60px; border-radius: 50%; border: 0; background: var(--accent); color: #fff;
-    font-size: 34px; line-height: 1; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
-  .fab.minus { background: var(--card); color: var(--danger); }
+    font-size: 34px; line-height: 1; box-shadow: 0 4px 12px rgba(0,0,0,.25);
+    display: flex; align-items: center; justify-content: center; padding: 0; }
+  .fab.minus { background: var(--green); color: #fff; }
+  .fab.camera { background: var(--card); color: var(--accent); }
+
+  /* 파일 선택 입력은 화면에 보이지 않게 숨김 (버튼으로 대신 엶) */
+  .vh { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
+
+  /* ── 사진 메뉴 ── */
+  .menu-btn { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 0 14px;
+    margin-bottom: 8px; border: 0; border-radius: 12px; background: var(--bg); color: var(--text);
+    font-size: 17px; text-align: left; }
+  .menu-btn svg { flex: none; color: var(--accent); }
+  .wide { width: 100%; }
+
+  /* ── 글자로 할 일 추가 (사진 + 붙여넣기 + 미리보기) ── */
+  #scan-img { display: block; width: 100%; max-height: 42vh; object-fit: contain; background: var(--bg);
+    border-radius: 10px; margin-bottom: 8px; }
+  .preview-head { font-size: 13px; color: var(--sub); margin: 12px 0 4px; }
+  #scan-preview li { display: flex; align-items: center; gap: 10px; min-height: 44px; border-bottom: 1px solid var(--line); }
+  #scan-preview input { width: 22px; height: 22px; flex: none; margin: 0; padding: 0; accent-color: var(--accent); }
+  #scan-preview span { flex: 1; font-size: 16px; word-break: keep-all; overflow-wrap: anywhere; }
+  #scan-preview li.off span { color: var(--sub); text-decoration: line-through; }
   .fab:disabled { opacity: .35; box-shadow: none; }
 
   /* ── 선택 삭제 모드 ── */
@@ -146,10 +167,16 @@
 <main>
   <ul id="list"></ul>
   <p id="empty" class="empty">오른쪽 아래 + 버튼으로 오늘 할 일을 추가하세요.<br>하루 10개 안팎이 적당합니다.</p>
-  <p class="hint">탭: 수정 · 왼쪽으로 밀기: 삭제 · 길게 눌러 끌기: 순서 변경 · − 버튼: 여러 개 선택 삭제</p>
+  <p class="hint">탭: 수정 · 왼쪽으로 밀기: 삭제 · 길게 눌러 끌기: 순서 변경 · − 버튼: 여러 개 선택 삭제 · 카메라: 사진 글자로 여러 개 추가</p>
 </main>
 
 <div class="fab-group">
+  <button type="button" id="camera" class="fab camera" aria-label="사진으로 할 일 추가">
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.8l1.4-2h6.6l1.4 2h1.8A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/>
+      <circle cx="12" cy="13" r="3.8"/>
+    </svg>
+  </button>
   <button type="button" id="minus" class="fab minus" aria-label="선택해서 삭제">&minus;</button>
   <button type="button" id="fab" class="fab" aria-label="할 일 추가">+</button>
 </div>
@@ -166,6 +193,45 @@
     <button type="submit" class="btn primary">추가</button>
   </form>
   <button type="button" class="btn plain" data-close>닫기</button>
+</section>
+
+<!-- 사진 선택 입력 (숨김): capture가 있으면 바로 카메라, 없으면 사진 보관함 -->
+<input type="file" id="cam-input" class="vh" accept="image/*" capture="environment" tabindex="-1" aria-hidden="true">
+<input type="file" id="album-input" class="vh" accept="image/*" tabindex="-1" aria-hidden="true">
+
+<!-- 사진 메뉴: 찍기 / 앨범 / 사진 없이 -->
+<section id="photo-menu" class="sheet" role="dialog" aria-label="사진으로 할 일 추가">
+  <h2>사진으로 할 일 추가</h2>
+  <p class="sub">메모·문서 사진의 글자를 한 줄에 할 일 1개로 추가합니다.</p>
+  <button type="button" id="pm-camera" class="menu-btn">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.8l1.4-2h6.6l1.4 2h1.8A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/><circle cx="12" cy="13" r="3.8"/></svg>
+    사진 찍기
+  </button>
+  <button type="button" id="pm-album" class="menu-btn">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="9.5" r="1.8"/><path d="M21 16l-5-5-9 9"/></svg>
+    앨범에서 사진 선택
+  </button>
+  <button type="button" id="pm-text" class="menu-btn">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M12 5v14M9 19h6"/></svg>
+    사진 없이 글자 스캔·붙여넣기
+  </button>
+  <button type="button" class="btn plain wide" data-close>취소</button>
+</section>
+
+<!-- 글자로 할 일 여러 개 추가: 사진 보기 + 붙여넣기 칸 + 줄별 미리보기 -->
+<section id="scan" class="sheet" role="dialog" aria-label="글자로 할 일 추가">
+  <h2>글자로 할 일 추가</h2>
+  <div id="scan-photo" hidden>
+    <img id="scan-img" alt="선택한 사진">
+    <p class="sub">사진 속 글자를 길게 눌러 선택 → 복사한 뒤, 아래 칸에 붙여 넣으세요.</p>
+  </div>
+  <textarea id="scan-text" rows="4" placeholder="여기에 붙여 넣기&#10;또는 이 칸을 길게 눌러 '텍스트 스캔'으로 바로 찍기"></textarea>
+  <p id="scan-head" class="preview-head" hidden></p>
+  <ul id="scan-preview"></ul>
+  <div class="btns">
+    <button type="button" class="btn plain" data-close>취소</button>
+    <button type="button" id="scan-add" class="btn primary" disabled>추가</button>
+  </div>
 </section>
 
 <!-- 상세·수정 시트 (F3) -->
@@ -380,6 +446,7 @@
   function closeSheet(force) {
     if (!openSheet) return;
     if (openSheet.id === 'carry' && !force) return;
+    if (openSheet.id === 'scan') cleanupScan(); // 사진은 저장하지 않고 닫을 때 메모리에서 지움
     document.activeElement && document.activeElement.blur();
     openSheet.classList.remove('show');
     openSheet.style.bottom = '';
@@ -411,6 +478,85 @@
     const input = $('#add-input');
     if (addTask(input.value)) input.value = '';
     input.focus();
+  });
+
+  // ════════ 사진·글자로 할 일 여러 개 추가 (아이폰 '텍스트 인식' 활용) ════════
+  let scanUrl = null, scanLines = [];
+  const unchecked = new Set(); // 미리보기에서 체크를 해제한 줄
+
+  $('#camera').addEventListener('click', () => showSheet($('#photo-menu')));
+  // 파일 선택창은 탭 직후 바로 열어야 아이폰이 막지 않음 → 먼저 열고 메뉴를 닫음
+  $('#pm-camera').addEventListener('click', () => { $('#cam-input').click(); closeSheet(false); });
+  $('#pm-album').addEventListener('click', () => { $('#album-input').click(); closeSheet(false); });
+  $('#pm-text').addEventListener('click', () => { openScan(null); $('#scan-text').focus(); });
+  ['#cam-input', '#album-input'].forEach((s) => $(s).addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ''; // 같은 사진을 다시 골라도 동작하게 비움
+    if (file) openScan(file);
+  }));
+
+  function openScan(file) {
+    cleanupScan();
+    $('#scan-text').value = '';
+    unchecked.clear();
+    if (file) { scanUrl = URL.createObjectURL(file); $('#scan-img').src = scanUrl; }
+    $('#scan-photo').hidden = !file;
+    renderPreview();
+    showSheet($('#scan'));
+  }
+  function cleanupScan() {
+    if (scanUrl) { URL.revokeObjectURL(scanUrl); scanUrl = null; }
+    $('#scan-img').removeAttribute('src');
+  }
+
+  // 한 줄 = 할 일 1개. 줄 앞의 '1.', '-', '•', '①' 같은 머리 기호는 지우고, 빈 줄·중복 줄은 뺌
+  const BULLET = /^\s*(?:[-–—*•·∙▪▫◦○●□■☐☑✓✔>]+|\(?\d{1,2}[.)](?=\s)|[①-⑳])\s*/;
+  function parseLines(text) {
+    const seen = new Set(), out = [];
+    text.split(/\r?\n/).forEach((line) => {
+      const t = line.replace(BULLET, '').replace(/\s+/g, ' ').trim().slice(0, 100);
+      if (t && !seen.has(t)) { seen.add(t); out.push(t); }
+    });
+    return out;
+  }
+
+  function renderPreview() {
+    scanLines = parseLines($('#scan-text').value);
+    [...unchecked].forEach((t) => { if (!scanLines.includes(t)) unchecked.delete(t); });
+    $('#scan-preview').innerHTML = scanLines.map((t, i) => `
+      <li${unchecked.has(t) ? ' class="off"' : ''}>
+        <input type="checkbox" data-i="${i}"${unchecked.has(t) ? '' : ' checked'} aria-label="추가할 항목">
+        <span>${esc(t)}</span>
+      </li>`).join('');
+    const n = scanLines.length - unchecked.size;
+    $('#scan-head').hidden = !scanLines.length;
+    $('#scan-head').textContent = `${scanLines.length}줄 인식 · 한 줄 = 할 일 1개 (체크 해제하면 제외)`;
+    $('#scan-add').disabled = n === 0;
+    $('#scan-add').textContent = n ? `${n}개 추가` : '추가';
+  }
+  $('#scan-text').addEventListener('input', renderPreview);
+  $('#scan-preview').addEventListener('click', (e) => {
+    const li = e.target.closest('li');
+    if (!li) return;
+    const cb = li.querySelector('input');
+    if (e.target !== cb) cb.checked = !cb.checked; // 글자를 눌러도 체크 전환
+    const t = scanLines[Number(cb.dataset.i)];
+    if (cb.checked) unchecked.delete(t); else unchecked.add(t);
+    renderPreview();
+  });
+  $('#scan-add').addEventListener('click', () => {
+    const titles = scanLines.filter((t) => !unchecked.has(t));
+    if (!titles.length) return;
+    const k = todayKey(), now = new Date().toISOString();
+    let order = nextOrder();
+    titles.forEach((title) => state.tasks.push({
+      id: uid(), title, memo: '', date: k, order: order++,
+      done: false, doneAt: null, carriedCount: 0, createdAt: now,
+    }));
+    save();
+    closeSheet(false);
+    render();
+    toast(`${titles.length}개 추가했습니다`, false);
   });
 
   // ── 수정 시트 ──
