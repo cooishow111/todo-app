@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- 아이폰 홈 화면에 추가했을 때 앱처럼(주소창 없이) 열리게 하는 설정 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="오늘 할 일">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>오늘 할 일</title>
+<style>
+  /* ── 색상: 라이트 / 다크 모드 ── */
+  :root {
+    --bg: #f2f2f7; --card: #ffffff; --text: #1c1c1e; --sub: #8e8e93;
+    --line: #e5e5ea; --accent: #0a84ff; --danger: #ff3b30; --warn: #ff9500;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #000000; --card: #1c1c1e; --text: #f2f2f7; --sub: #8e8e93; --line: #38383a; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+  body { max-width: 600px; margin: 0 auto;
+    padding: env(safe-area-inset-top) 16px calc(100px + env(safe-area-inset-bottom)); }
+
+  /* ── 상단: 날짜 + 진행률 ── */
+  header { padding: 16px 0 14px; }
+  h1 { font-size: 28px; margin: 0; }
+  .progress-text { color: var(--sub); font-size: 15px; margin-top: 4px; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+
+  /* ── 할 일 목록 ── */
+  ul { list-style: none; margin: 0; padding: 0; }
+  li.item { position: relative; margin-bottom: 8px; border-radius: 12px; overflow: hidden;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; transition: transform .15s; }
+  li.item.dragging { transition: none; z-index: 10; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+  .del-bg { position: absolute; inset: 0; background: var(--danger); color: #fff; font-weight: 600;
+    display: flex; align-items: center; justify-content: flex-end; padding-right: 20px; }
+  .row { position: relative; background: var(--card); display: flex; align-items: center; gap: 4px;
+    min-height: 52px; padding: 4px 12px 4px 4px; }
+  .check { width: 44px; height: 44px; flex: none; display: flex; align-items: center; justify-content: center; }
+  .check span { width: 24px; height: 24px; border: 2px solid var(--sub); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; }
+  li.done .check span { background: var(--accent); border-color: var(--accent); }
+  li.done .check span::after { content: ""; width: 6px; height: 11px; border: solid #fff;
+    border-width: 0 2px 2px 0; transform: translate(0, -1px) rotate(45deg); }
+  .title { flex: 1; font-size: 17px; line-height: 1.3; padding: 10px 0; word-break: break-all; }
+  li.done .title { color: var(--sub); text-decoration: line-through; }
+  .badge { flex: none; font-size: 12px; color: var(--warn); border: 1px solid var(--warn);
+    border-radius: 6px; padding: 1px 6px; }
+  .memo { flex: none; font-size: 12px; color: var(--sub); }
+  .empty { color: var(--sub); text-align: center; padding: 40px 0; font-size: 15px; line-height: 1.6; }
+  .hint { color: var(--sub); text-align: center; font-size: 12px; margin-top: 16px; }
+
+  /* ── 추가 버튼 (오른쪽 아래, 엄지 위치) ── */
+  .fab { position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom));
+    width: 60px; height: 60px; border-radius: 50%; border: 0; background: var(--accent); color: #fff;
+    font-size: 34px; line-height: 1; box-shadow: 0 4px 12px rgba(0,0,0,.25); z-index: 5; }
+
+  /* ── 아래에서 올라오는 시트 ── */
+  .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); opacity: 0; pointer-events: none;
+    transition: opacity .2s; z-index: 20; }
+  .backdrop.show { opacity: 1; pointer-events: auto; }
+  .sheet { position: fixed; left: 0; right: 0; bottom: 0; max-width: 600px; margin: 0 auto; z-index: 21;
+    background: var(--card); border-radius: 16px 16px 0 0; max-height: 85vh; overflow-y: auto;
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+    transform: translateY(110%); transition: transform .25s; visibility: hidden; }
+  .sheet.show { transform: none; visibility: visible; }
+  .sheet h2 { font-size: 20px; margin: 4px 0; }
+  .sheet .sub { color: var(--sub); font-size: 14px; margin: 0 0 12px; }
+  .add-row { display: flex; gap: 8px; }
+  input, textarea { width: 100%; font: inherit; font-size: 17px; /* 16px 이상이어야 아이폰이 확대하지 않음 */
+    color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  textarea { resize: vertical; }
+  label { display: block; font-size: 13px; color: var(--sub); margin-bottom: 12px; }
+  label input, label textarea { margin-top: 4px; }
+  .btn { min-height: 44px; padding: 0 16px; border-radius: 10px; border: 0; font-size: 16px; font-weight: 600; }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.danger { background: transparent; color: var(--danger); }
+  .btn.plain { background: transparent; color: var(--accent); }
+  .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+  .btns .left { margin-right: auto; }
+  #add .btn.plain { width: 100%; margin-top: 8px; }
+
+  /* ── 지난 날 남은 일 카드 ── */
+  #carry-list li { display: flex; align-items: center; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  #carry-list .ct { flex: 1; font-size: 16px; word-break: break-all; }
+  #carry-list small { display: block; color: var(--sub); font-size: 12px; margin-top: 2px; }
+  #carry-list .btn { padding: 0 10px; font-size: 15px; }
+
+  /* ── 하단 알림 (삭제 실행 취소) ── */
+  .toast { position: fixed; left: 16px; right: 96px; bottom: calc(26px + env(safe-area-inset-bottom));
+    max-width: 480px; background: #333; color: #fff; border-radius: 12px; padding: 4px 4px 4px 16px;
+    display: flex; align-items: center; justify-content: space-between; font-size: 15px;
+    opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 30; min-height: 48px; }
+  .toast.show { opacity: 1; pointer-events: auto; }
+  .toast button { background: none; border: 0; color: #64d2ff; font-size: 15px; font-weight: 600; min-height: 44px; padding: 0 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="date"></h1>
+  <div id="progress-text" class="progress-text"></div>
+  <div class="bar"><div id="bar"></div></div>
+</header>
+
+<main>
+  <ul id="list"></ul>
+  <p id="empty" class="empty">오른쪽 아래 + 버튼으로 오늘 할 일을 추가하세요.<br>하루 10개 안팎이 적당합니다.</p>
+  <p class="hint">탭: 수정 · 왼쪽으로 밀기: 삭제 · 길게 눌러 끌기: 순서 변경</p>
+</main>
+
+<button id="fab" class="fab" aria-label="할 일 추가">+</button>
+<div id="backdrop" class="backdrop"></div>
+
+<!-- 할 일 추가 시트 (F1) -->
+<section id="add" class="sheet" role="dialog" aria-label="할 일 추가">
+  <form id="add-form" class="add-row">
+    <input id="add-input" type="text" maxlength="100" placeholder="할 일 입력 후 엔터" autocomplete="off" enterkeyhint="enter">
+    <button type="submit" class="btn primary">추가</button>
+  </form>
+  <button type="button" class="btn plain" data-close>닫기</button>
+</section>
+
+<!-- 상세·수정 시트 (F3) -->
+<section id="edit" class="sheet" role="dialog" aria-label="할 일 수정">
+  <label>제목<input id="edit-title" type="text" maxlength="100" autocomplete="off"></label>
+  <label>메모<textarea id="edit-memo" rows="3"></textarea></label>
+  <div class="btns">
+    <button type="button" id="edit-delete" class="btn danger left">삭제</button>
+    <button type="button" class="btn plain" data-close>취소</button>
+    <button type="button" id="edit-save" class="btn primary">저장</button>
+  </div>
+</section>
+
+<!-- 지난 날 남은 일 정리 (F6) — 모두 결정해야 닫힘 -->
+<section id="carry" class="sheet" role="dialog" aria-label="지난 날 남은 일">
+  <h2 id="carry-title"></h2>
+  <p class="sub">오늘로 옮길 일과 지울 일을 정해 주세요.</p>
+  <ul id="carry-list"></ul>
+  <div class="btns">
+    <button type="button" id="carry-del-all" class="btn danger left">모두 삭제</button>
+    <button type="button" id="carry-all" class="btn primary">모두 오늘로</button>
+  </div>
+</section>
+
+<div id="toast" class="toast" role="status">
+  <span id="toast-msg"></span>
+  <button type="button" id="toast-undo">실행 취소</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ════════ 저장 (F7): 폰 안의 브라우저 저장소(localStorage)에 보관 ════════
+  const KEY = 'todo-app.v1';
+  const $ = (s) => document.querySelector(s);
+
+  function load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY));
+      if (s && Array.isArray(s.tasks)) return s;
+    } catch (e) { /* 저장된 값이 없거나 깨졌으면 새로 시작 */ }
+    return { tasks: [] };
+  }
+  let state = load();
+
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); }
+    catch (e) { toast('저장하지 못했습니다. 저장 공간을 확인하세요.', false); }
+  }
+
+  // ════════ 유틸리티 ════════
+  // 기기 시간(KST) 기준 날짜 문자열 'YYYY-MM-DD' — 하루의 경계는 자정
+  function todayKey(d = new Date()) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function uid() {
+    return (crypto.randomUUID && crypto.randomUUID()) || Date.now().toString(36) + Math.random().toString(36).slice(2);
+  }
+  // 제목을 화면에 넣을 때 HTML 특수문자를 무해하게 바꿈
+  const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const find = (id) => state.tasks.find((t) => t.id === id);
+
+  // 오늘 할 일: 미완료가 위, 완료가 아래. 각 그룹 안에서는 사용자가 정한 순서
+  function todays() {
+    const k = todayKey();
+    return state.tasks.filter((t) => t.date === k).sort((a, b) => (a.done - b.done) || (a.order - b.order));
+  }
+  function nextOrder() {
+    const k = todayKey();
+    return state.tasks.filter((t) => t.date === k).reduce((m, t) => Math.max(m, t.order), -1) + 1;
+  }
+
+  // ════════ 화면 그리기 (F5 진행률 포함) ════════
+  const listEl = $('#list');
+  let shownDate = '';
+
+  function render() {
+    const now = new Date();
+    shownDate = todayKey(now);
+    $('#date').textContent = `${now.getMonth() + 1}월 ${now.getDate()}일 (${'일월화수목금토'[now.getDay()]})`;
+
+    const list = todays();
+    const done = list.filter((t) => t.done).length;
+    $('#progress-text').textContent = list.length ? `완료 ${done} / ${list.length}` : '오늘 할 일이 없습니다';
+    $('#bar').style.width = list.length ? (done / list.length * 100) + '%' : '0';
+
+    listEl.innerHTML = list.map((t) => `
+      <li class="item${t.done ? ' done' : ''}" data-id="${t.id}">
+        <div class="del-bg">삭제</div>
+        <div class="row">
+          <div class="check"><span></span></div>
+          <div class="title">${esc(t.title)}</div>
+          ${!t.done && t.carriedCount >= 3 ? `<span class="badge">${t.carriedCount}회 미룸</span>` : ''}
+          ${t.memo ? '<span class="memo">메모</span>' : ''}
+        </div>
+      </li>`).join('');
+    $('#empty').hidden = list.length > 0;
+  }
+
+  // ════════ 기본 동작: 추가(F1) · 완료(F2) · 삭제(F3) ════════
+  function addTask(title) {
+    title = title.trim().slice(0, 100);
+    if (!title) return false;
+    state.tasks.push({
+      id: uid(), title, memo: '', date: todayKey(), order: nextOrder(),
+      done: false, doneAt: null, carriedCount: 0, createdAt: new Date().toISOString(),
+    });
+    save(); render();
+    return true;
+  }
+
+  function toggle(id) {
+    const t = find(id);
+    if (!t) return;
+    t.done = !t.done;
+    t.doneAt = t.done ? new Date().toISOString() : null;
+    save(); render();
+  }
+
+  let lastDeleted = null, toastTimer = null;
+  function removeTask(id) {
+    const i = state.tasks.findIndex((t) => t.id === id);
+    if (i < 0) return;
+    lastDeleted = { task: state.tasks[i], index: i };
+    state.tasks.splice(i, 1);
+    save(); render();
+    toast('삭제했습니다', true);
+  }
+  function undoDelete() {
+    if (!lastDeleted) return;
+    state.tasks.splice(lastDeleted.index, 0, lastDeleted.task);
+    lastDeleted = null;
+    save(); render(); hideToast();
+  }
+
+  // 5초간 보이는 하단 알림. 실행 취소는 이 5초 안에만 가능
+  function toast(msg, withUndo) {
+    $('#toast-msg').textContent = msg;
+    $('#toast-undo').hidden = !withUndo;
+    $('#toast').classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { hideToast(); lastDeleted = null; }, 5000);
+  }
+  function hideToast() { $('#toast').classList.remove('show'); }
+  $('#toast-undo').addEventListener('click', undoDelete);
+
+  // ════════ 시트 열기/닫기 ════════
+  let openSheet = null;
+  function showSheet(el) {
+    if (openSheet && openSheet !== el) closeSheet(true);
+    openSheet = el;
+    el.classList.add('show');
+    $('#backdrop').classList.add('show');
+    fitKeyboard();
+  }
+  // force=false면 '지난 날 남은 일' 카드는 닫지 않음 (결정을 해야 닫힘)
+  function closeSheet(force) {
+    if (!openSheet) return;
+    if (openSheet.id === 'carry' && !force) return;
+    document.activeElement && document.activeElement.blur();
+    openSheet.classList.remove('show');
+    openSheet.style.bottom = '';
+    openSheet = null;
+    $('#backdrop').classList.remove('show');
+  }
+  $('#backdrop').addEventListener('click', () => closeSheet(false));
+  document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => closeSheet(false)));
+
+  // 아이폰 키보드가 올라오면 시트를 키보드 위로 올림
+  function fitKeyboard() {
+    if (!openSheet || !window.visualViewport) return;
+    const vv = window.visualViewport;
+    openSheet.style.bottom = Math.max(0, window.innerHeight - vv.height - vv.offsetTop) + 'px';
+  }
+  if (window.visualViewport) {
+    visualViewport.addEventListener('resize', fitKeyboard);
+    visualViewport.addEventListener('scroll', fitKeyboard);
+  }
+
+  // ── 추가 시트: 엔터마다 저장, 입력창은 열린 채 유지 → 연속 입력 ──
+  $('#fab').addEventListener('click', () => {
+    $('#add-input').value = '';
+    showSheet($('#add'));
+    $('#add-input').focus(); // 탭 직후 바로 호출해야 아이폰 키보드가 뜸
+  });
+  $('#add-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = $('#add-input');
+    if (addTask(input.value)) input.value = '';
+    input.focus();
+  });
+
+  // ── 수정 시트 ──
+  let editId = null;
+  function openEdit(id) {
+    const t = find(id);
+    if (!t) return;
+    editId = id;
+    $('#edit-title').value = t.title;
+    $('#edit-memo').value = t.memo || '';
+    showSheet($('#edit'));
+  }
+  $('#edit-save').addEventListener('click', () => {
+    const t = find(editId);
+    const title = $('#edit-title').value.trim().slice(0, 100);
+    if (!title) { $('#edit-title').focus(); return; }
+    if (t) { t.title = title; t.memo = $('#edit-memo').value.trim(); save(); render(); }
+    closeSheet(false);
+  });
+  $('#edit-delete').addEventListener('click', () => {
+    const id = editId;
+    closeSheet(false);
+    removeTask(id);
+  });
+
+  // ════════ 지난 날 남은 일 이월 (F6) ════════
+  function staleTasks() {
+    const k = todayKey();
+    return state.tasks.filter((t) => !t.done && t.date < k)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order);
+  }
+  function carryOne(t) {
+    t.date = todayKey();
+    t.carriedCount = (t.carriedCount || 0) + 1;
+    t.order = nextOrder(); // 오늘 목록 맨 아래에 붙임
+  }
+  function checkCarry() {
+    const stale = staleTasks();
+    if (!stale.length) {
+      if (openSheet && openSheet.id === 'carry') closeSheet(true);
+      return;
+    }
+    $('#carry-title').textContent = `지난 날 남은 일 ${stale.length}개`;
+    $('#carry-list').innerHTML = stale.map((t) => `
+      <li data-id="${t.id}">
+        <div class="ct">${esc(t.title)}
+          <small>${t.date.slice(5).replace('-', '/')}${t.carriedCount ? ` · 이미 ${t.carriedCount}회 이월` : ''}</small>
+        </div>
+        <button type="button" class="btn plain" data-act="carry">오늘로</button>
+        <button type="button" class="btn danger" data-act="del">삭제</button>
+      </li>`).join('');
+    if (openSheet !== $('#carry')) showSheet($('#carry'));
+  }
+  $('#carry-list').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const id = btn.closest('li').dataset.id;
+    if (btn.dataset.act === 'carry') { const t = find(id); if (t) carryOne(t); }
+    else state.tasks = state.tasks.filter((t) => t.id !== id);
+    save(); render(); checkCarry();
+  });
+  $('#carry-all').addEventListener('click', () => {
+    staleTasks().forEach(carryOne);
+    save(); render(); checkCarry();
+  });
+  $('#carry-del-all').addEventListener('click', () => {
+    if (!confirm('지난 날 남은 일을 모두 삭제할까요?')) return;
+    const ids = new Set(staleTasks().map((t) => t.id));
+    state.tasks = state.tasks.filter((t) => !ids.has(t.id));
+    save(); render(); checkCarry();
+  });
+
+  // 앱을 켜 둔 채 자정이 지나거나, 다음 날 다시 열었을 때 날짜를 갱신
+  function refreshIfNewDay() {
+    if (todayKey() !== shownDate) { render(); checkCarry(); }
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshIfNewDay(); });
+  setInterval(refreshIfNewDay, 30000);
+
+  // ════════ 목록 손가락 조작: 탭 / 왼쪽 밀기(삭제) / 길게 눌러 끌기(F4 순서 변경) ════════
+  const LONG_PRESS_MS = 450, MOVE_TOL = 10, SWIPE_DELETE_PX = 90;
+  let g = null; // 진행 중인 손가락 동작 정보
+
+  function gStart(target, x, y) {
+    const li = target.closest('li.item');
+    if (!li) return;
+    const t = find(li.dataset.id);
+    g = { li, id: li.dataset.id, x0: x, y0: y, mode: 'pending', dx: 0, onCheck: !!target.closest('.check') };
+    // 미완료 항목만 길게 눌러 순서 변경 가능
+    if (t && !t.done) g.timer = setTimeout(startDrag, LONG_PRESS_MS);
+  }
+
+  function gMove(e, x, y) {
+    if (!g) return;
+    const dx = x - g.x0, dy = y - g.y0;
+    if (g.mode === 'pending') {
+      if (Math.abs(dx) > MOVE_TOL && Math.abs(dx) > Math.abs(dy)) { clearTimeout(g.timer); g.mode = 'swipe'; }
+      else if (Math.abs(dy) > MOVE_TOL) { clearTimeout(g.timer); g.mode = 'scroll'; } // 일반 스크롤
+    }
+    if (g.mode === 'swipe') {
+      e.preventDefault();
+      g.dx = Math.min(0, dx); // 왼쪽으로만
+      const row = g.li.querySelector('.row');
+      row.style.transition = 'none';
+      row.style.transform = `translateX(${g.dx}px)`;
+    } else if (g.mode === 'drag') {
+      e.preventDefault();
+      dragMove(dy);
+    }
+  }
+
+  function gEnd() {
+    if (!g) return;
+    clearTimeout(g.timer);
+    const cur = g;
+    g = null;
+    if (cur.mode === 'pending') {
+      if (cur.onCheck) toggle(cur.id); else openEdit(cur.id);
+    } else if (cur.mode === 'swipe') {
+      if (cur.dx < -SWIPE_DELETE_PX) removeTask(cur.id);
+      else {
+        const row = cur.li.querySelector('.row');
+        row.style.transition = 'transform .2s';
+        row.style.transform = '';
+      }
+    } else if (cur.mode === 'drag') {
+      dragEnd(cur);
+    }
+  }
+
+  function gCancel() {
+    if (!g) return;
+    clearTimeout(g.timer);
+    g = null;
+    render();
+  }
+
+  function startDrag() {
+    if (!g || g.mode !== 'pending') return;
+    const items = [...listEl.querySelectorAll('li.item:not(.done)')];
+    g.mode = 'drag';
+    g.items = items;
+    g.from = g.to = items.indexOf(g.li);
+    // 항목 한 칸의 높이(간격 포함)
+    g.step = items.length > 1 ? items[1].getBoundingClientRect().top - items[0].getBoundingClientRect().top : g.li.offsetHeight;
+    g.li.classList.add('dragging');
+  }
+
+  function dragMove(dy) {
+    const n = g.items.length;
+    // 미완료 목록 범위 안에서만 움직이도록 제한
+    dy = Math.max(-g.from * g.step, Math.min((n - 1 - g.from) * g.step, dy));
+    const to = Math.round(g.from + dy / g.step);
+    g.li.style.transform = `translateY(${dy}px)`;
+    g.items.forEach((el, i) => {
+      if (el === g.li) return;
+      let s = 0;
+      if (g.from < to && i > g.from && i <= to) s = -g.step; // 아래로 끌면 사이 항목들이 한 칸 위로
+      if (g.from > to && i < g.from && i >= to) s = g.step;  // 위로 끌면 한 칸 아래로
+      el.style.transform = s ? `translateY(${s}px)` : '';
+    });
+    g.to = to;
+  }
+
+  function dragEnd(cur) {
+    const ids = cur.items.map((el) => el.dataset.id);
+    const [moved] = ids.splice(cur.from, 1);
+    ids.splice(cur.to, 0, moved);
+    ids.forEach((id, i) => { const t = find(id); if (t) t.order = i; });
+    // 완료 항목은 미완료 뒤 순서로 다시 번호를 매김
+    todays().filter((t) => t.done).forEach((t, i) => { t.order = ids.length + i; });
+    save(); render();
+  }
+
+  // 아이폰: 터치 이벤트
+  let lastTouch = 0;
+  listEl.addEventListener('touchstart', (e) => {
+    lastTouch = Date.now();
+    if (e.touches.length > 1) { gCancel(); return; }
+    gStart(e.target, e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  listEl.addEventListener('touchmove', (e) => {
+    gMove(e, e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: false }); // 끌기·밀기 중 화면 스크롤을 막기 위해 passive:false
+  listEl.addEventListener('touchend', (e) => {
+    lastTouch = Date.now();
+    // 탭 후 따라오는 가짜 클릭이 방금 연 시트를 닫지 않도록 막음
+    if (g && g.mode !== 'scroll') e.preventDefault();
+    gEnd();
+  });
+  listEl.addEventListener('touchcancel', gCancel);
+
+  // PC 확인용: 마우스 이벤트 (터치 직후 따라오는 마우스 이벤트는 무시)
+  listEl.addEventListener('mousedown', (e) => {
+    if (Date.now() - lastTouch < 800 || e.button !== 0) return;
+    gStart(e.target, e.clientX, e.clientY);
+    const mm = (ev) => gMove(ev, ev.clientX, ev.clientY);
+    const mu = () => {
+      window.removeEventListener('mousemove', mm);
+      window.removeEventListener('mouseup', mu);
+      gEnd();
+    };
+    window.addEventListener('mousemove', mm);
+    window.addEventListener('mouseup', mu);
+  });
+
+  // ════════ 시작 ════════
+  render();
+  checkCarry();
+
+  // 오프라인 동작용 서비스 워커 등록 (https 또는 localhost에서만 동작)
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* 실패해도 앱은 동작 */ });
+  }
+})();
+</script>
+</body>
+</html>
