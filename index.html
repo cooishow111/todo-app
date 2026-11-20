@@ -81,8 +81,10 @@
   .wide { width: 100%; }
 
   /* ── 글자로 할 일 추가 (사진 + 붙여넣기 + 미리보기) ── */
-  #scan-img { display: block; width: 100%; max-height: 42vh; object-fit: contain; background: var(--bg);
+  #scan-img { display: block; width: 100%; max-height: 32vh; object-fit: contain; background: var(--bg);
     border-radius: 10px; margin-bottom: 8px; }
+  .scan-status { font-size: 14px; color: var(--sub); margin: 0 0 8px; }
+  .scan-status.busy { color: var(--accent); font-weight: 600; }
   .preview-head { font-size: 13px; color: var(--sub); margin: 12px 0 4px; }
   #scan-preview li { display: flex; align-items: center; gap: 10px; min-height: 44px; border-bottom: 1px solid var(--line); }
   #scan-preview input { width: 22px; height: 22px; flex: none; margin: 0; padding: 0; accent-color: var(--accent); }
@@ -202,7 +204,7 @@
 <!-- 사진 메뉴: 찍기 / 앨범 / 사진 없이 -->
 <section id="photo-menu" class="sheet" role="dialog" aria-label="사진으로 할 일 추가">
   <h2>사진으로 할 일 추가</h2>
-  <p class="sub">메모·문서 사진의 글자를 한 줄에 할 일 1개로 추가합니다.</p>
+  <p class="sub">사진 속 글자를 자동으로 읽어 한 줄에 할 일 1개로 추가합니다.</p>
   <button type="button" id="pm-camera" class="menu-btn">
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.8l1.4-2h6.6l1.4 2h1.8A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/><circle cx="12" cy="13" r="3.8"/></svg>
     사진 찍기
@@ -223,9 +225,10 @@
   <h2>글자로 할 일 추가</h2>
   <div id="scan-photo" hidden>
     <img id="scan-img" alt="선택한 사진">
-    <p class="sub">사진 속 글자를 길게 눌러 선택 → 복사한 뒤, 아래 칸에 붙여 넣으세요.</p>
   </div>
-  <textarea id="scan-text" rows="4" placeholder="여기에 붙여 넣기&#10;또는 이 칸을 길게 눌러 '텍스트 스캔'으로 바로 찍기"></textarea>
+  <!-- 자동 인식 진행 상태 (준비 중 → 인식 중 % → 완료/실패) -->
+  <p id="scan-status" class="scan-status" hidden></p>
+  <textarea id="scan-text" rows="4"></textarea>
   <p id="scan-head" class="preview-head" hidden></p>
   <ul id="scan-preview"></ul>
   <div class="btns">
@@ -486,8 +489,9 @@
 
   $('#camera').addEventListener('click', () => showSheet($('#photo-menu')));
   // 파일 선택창은 탭 직후 바로 열어야 아이폰이 막지 않음 → 먼저 열고 메뉴를 닫음
-  $('#pm-camera').addEventListener('click', () => { $('#cam-input').click(); closeSheet(false); });
-  $('#pm-album').addEventListener('click', () => { $('#album-input').click(); closeSheet(false); });
+  // 사진을 고르는 동안 인식 엔진을 미리 준비해 기다리는 시간을 줄임
+  $('#pm-camera').addEventListener('click', () => { $('#cam-input').click(); closeSheet(false); warmOcr(); });
+  $('#pm-album').addEventListener('click', () => { $('#album-input').click(); closeSheet(false); warmOcr(); });
   $('#pm-text').addEventListener('click', () => { openScan(null); $('#scan-text').focus(); });
   ['#cam-input', '#album-input'].forEach((s) => $(s).addEventListener('change', (e) => {
     const file = e.target.files && e.target.files[0];
@@ -498,15 +502,112 @@
   function openScan(file) {
     cleanupScan();
     $('#scan-text').value = '';
+    $('#scan-text').placeholder = file
+      ? '인식된 글자가 여기에 표시됩니다 (틀린 글자는 고칠 수 있음)'
+      : "여기에 붙여 넣기\n또는 이 칸을 길게 눌러 '텍스트 스캔'으로 바로 찍기";
     unchecked.clear();
     if (file) { scanUrl = URL.createObjectURL(file); $('#scan-img').src = scanUrl; }
     $('#scan-photo').hidden = !file;
+    setStatus('', false);
     renderPreview();
     showSheet($('#scan'));
+    if (file) runOcr();
   }
   function cleanupScan() {
+    scanToken++; // 진행 중인 인식 결과는 버림
     if (scanUrl) { URL.revokeObjectURL(scanUrl); scanUrl = null; }
     $('#scan-img').removeAttribute('src');
+  }
+  function setStatus(text, busy) {
+    const el = $('#scan-status');
+    el.hidden = !text;
+    el.textContent = text;
+    el.classList.toggle('busy', !!busy);
+  }
+
+  // ── 글자 자동 인식: Tesseract.js (무료 오픈소스, 사진은 폰 밖으로 나가지 않음) ──
+  // 버전을 고정해 두어 엔진이 예고 없이 바뀌지 않게 함. 한글·영어 인식 데이터는 처음 한 번만 내려받아 폰에 저장됨
+  const OCR = {
+    script: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
+    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
+    maxSide: 2000, // 사진 긴 변을 이 픽셀 이하로 줄여 인식 (아이폰 원본 4032px은 너무 느림)
+  };
+  let ocrWorkerP = null, ocrLog = null, scanToken = 0;
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src; s.onload = resolve; s.onerror = () => reject(new Error('script'));
+      document.head.appendChild(s);
+    });
+  }
+  function getWorker() {
+    if (!ocrWorkerP) {
+      ocrWorkerP = (async () => {
+        if (!window.Tesseract) await loadScript(OCR.script);
+        const w = await Tesseract.createWorker('kor+eng', 1, {
+          workerPath: OCR.workerPath, corePath: OCR.corePath,
+          logger: (m) => ocrLog && ocrLog(m),
+        });
+        await w.setParameters({ preserve_interword_spaces: '1' }); // 한글 띄어쓰기 유지
+        return w;
+      })();
+      ocrWorkerP.catch(() => { ocrWorkerP = null; }); // 실패하면 다음 사진 때 다시 시도
+    }
+    return ocrWorkerP;
+  }
+  function warmOcr() { if (navigator.onLine !== false || window.Tesseract) getWorker().catch(() => {}); }
+
+  // 사진을 적당한 크기로 줄여 캔버스에 그림 (<img>를 거치면 아이폰 사진의 회전 정보가 반영됨)
+  async function photoCanvas() {
+    const img = $('#scan-img');
+    await img.decode();
+    const k = Math.min(1, OCR.maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.naturalWidth * k);
+    c.height = Math.round(img.naturalHeight * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c;
+  }
+
+  // 인식 결과 정리: 잡티 기호를 지우고, 글자·숫자가 2개 미만인 줄(얼룩·선 등)은 버림
+  function cleanOcr(text) {
+    return text.split(/\r?\n/)
+      .map((l) => l.replace(/[|_~`]+/g, ' ').replace(/\s+/g, ' ').trim())
+      .filter((l) => (l.match(/[가-힣A-Za-z0-9]/g) || []).length >= 2)
+      .join('\n');
+  }
+
+  async function runOcr() {
+    const token = ++scanToken;
+    const alive = () => token === scanToken; // 그사이 화면을 닫거나 다른 사진을 고르면 false
+    setStatus('인식 엔진 준비 중…', true);
+    ocrLog = (m) => {
+      if (!alive()) return;
+      if (m.status === 'recognizing text') setStatus(`글자 인식 중… ${Math.round(m.progress * 100)}%`, true);
+      else if (/load/.test(m.status)) setStatus('인식 엔진 준비 중… (처음 한 번은 약 8 MB를 내려받습니다)', true);
+    };
+    try {
+      const [canvas, worker] = await Promise.all([photoCanvas(), getWorker()]);
+      if (!alive()) return;
+      const { data } = await worker.recognize(canvas);
+      if (!alive()) return;
+      const text = cleanOcr(data.text || '');
+      $('#scan-text').value = text;
+      renderPreview();
+      // 한글이 없고 글자·숫자가 4개 미만인 짧은 줄(사진 가장자리 얼룩을 글자로 오인한 경우 등)은 처음부터 체크 해제
+      scanLines.filter((t) => !/[가-힣]/.test(t) && (t.match(/[A-Za-z0-9]/g) || []).length < 4).forEach((t) => unchecked.add(t));
+      renderPreview();
+      setStatus(text
+        ? '인식 완료 · 틀린 글자는 위 칸에서 고치고, 필요 없는 줄은 체크를 해제하세요.'
+        : '글자를 찾지 못했습니다. 글자가 화면을 채우도록 가까이, 밝게 찍어 보세요.', false);
+    } catch (e) {
+      if (!alive()) return;
+      setStatus(navigator.onLine === false && !window.Tesseract
+        ? '글자 인식을 처음 쓸 때는 인터넷 연결이 필요합니다. 연결 후 다시 시도하세요.'
+        : '글자 인식에 실패했습니다. 다시 시도하거나 아래 칸에 직접 입력하세요.', false);
+    }
   }
 
   // 한 줄 = 할 일 1개. 줄 앞의 '1.', '-', '•', '①' 같은 머리 기호는 지우고, 빈 줄·중복 줄은 뺌
