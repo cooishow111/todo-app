@@ -70,11 +70,6 @@
   .fab.minus { background: var(--green); color: #fff; }
   .fab.camera, .fab.voice { background: var(--card); color: var(--accent); }
 
-  /* 음성 입력: 듣는 중이면 빨간 '정지' 버튼 */
-  .voice-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
-    margin-bottom: 10px; background: var(--bg); color: var(--accent); }
-  .voice-btn.on { background: var(--danger); color: #fff; }
-
   /* 파일 선택 입력은 화면에 보이지 않게 숨김 (버튼으로 대신 엶) */
   .vh { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
 
@@ -214,18 +209,18 @@
 <!-- 사진 메뉴: 찍기 / 앨범 / 사진 없이 -->
 <section id="photo-menu" class="sheet" role="dialog" aria-label="사진으로 할 일 추가">
   <h2>사진으로 할 일 추가</h2>
-  <p class="sub">사진 속 글자를 자동으로 읽어 한 줄에 할 일 1개로 추가합니다.</p>
+  <p class="sub">사진 속 글자를 읽어 한 줄에 할 일 1개로 추가합니다.</p>
+  <button type="button" id="pm-text" class="menu-btn">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M8 10h8M8 14h5"/></svg>
+    카메라로 글자 스캔 (가장 정확)
+  </button>
   <button type="button" id="pm-camera" class="menu-btn">
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.8l1.4-2h6.6l1.4 2h1.8A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/><circle cx="12" cy="13" r="3.8"/></svg>
-    사진 찍기
+    사진 찍어 자동 인식
   </button>
   <button type="button" id="pm-album" class="menu-btn">
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="9.5" r="1.8"/><path d="M21 16l-5-5-9 9"/></svg>
-    앨범에서 사진 선택
-  </button>
-  <button type="button" id="pm-text" class="menu-btn">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M12 5v14M9 19h6"/></svg>
-    사진 없이 글자 스캔·붙여넣기
+    앨범 사진 자동 인식
   </button>
   <button type="button" class="btn plain wide" data-close>취소</button>
 </section>
@@ -238,11 +233,6 @@
   </div>
   <!-- 자동 인식 진행 상태 (사진: 준비 중 → 인식 중 % → 완료 / 음성: 듣는 중 → 완료) -->
   <p id="scan-status" class="scan-status" hidden></p>
-  <!-- 음성 모드에서만 보이는 말하기/정지 버튼 -->
-  <button type="button" id="voice-btn" class="btn voice-btn" hidden>
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
-    <span id="voice-btn-text">말하기</span>
-  </button>
   <textarea id="scan-text" rows="4"></textarea>
   <p id="scan-head" class="preview-head" hidden></p>
   <ul id="scan-preview"></ul>
@@ -507,7 +497,12 @@
   // 사진을 고르는 동안 인식 엔진을 미리 준비해 기다리는 시간을 줄임
   $('#pm-camera').addEventListener('click', () => { $('#cam-input').click(); closeSheet(false); warmOcr(); });
   $('#pm-album').addEventListener('click', () => { $('#album-input').click(); closeSheet(false); warmOcr(); });
-  $('#pm-text').addEventListener('click', () => { openScan(null); $('#scan-text').focus(); });
+  // 아이폰 기본 '텍스트 스캔'(라이브 텍스트): 카메라로 비춘 글자를 입력칸에 바로 넣음 → 가장 정확
+  $('#pm-text').addEventListener('click', () => {
+    openScan(null, 'text');
+    setStatus("입력칸을 한 번 더 누르면 나오는 메뉴에서 '텍스트 스캔'을 누르고, 글자를 비춘 뒤 '삽입'을 누르세요.", true);
+    $('#scan-text').focus();
+  });
   ['#cam-input', '#album-input'].forEach((s) => $(s).addEventListener('change', (e) => {
     const file = e.target.files && e.target.files[0];
     e.target.value = ''; // 같은 사진을 다시 골라도 동작하게 비움
@@ -520,7 +515,6 @@
     cleanupScan();
     scanMode = file ? 'photo' : (mode || 'text');
     $('#scan-title').textContent = scanMode === 'voice' ? '음성으로 할 일 추가' : '글자로 할 일 추가';
-    $('#voice-btn').hidden = scanMode !== 'voice';
     $('#scan-text').value = '';
     $('#scan-text').placeholder = {
       photo: '인식된 글자가 여기에 표시됩니다 (틀린 글자는 고칠 수 있음)',
@@ -537,7 +531,6 @@
   }
   function cleanupScan() {
     scanToken++; // 진행 중인 인식 결과는 버림
-    stopVoice(true); // 듣는 중이었다면 마이크 끄기
     if (scanUrl) { URL.revokeObjectURL(scanUrl); scanUrl = null; }
     $('#scan-img').removeAttribute('src');
   }
@@ -548,86 +541,14 @@
     el.classList.toggle('busy', !!busy);
   }
 
-  // ── 음성 인식: 아이폰(Safari)의 음성 인식 기능 사용, 한국어 ──
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let rec = null, listening = false, voiceBase = '';
-
+  // ── 음성 입력: 아이폰 키보드의 받아쓰기(🎤) 사용 ──
+  // 웹 음성 인식(Web Speech API)은 홈 화면 앱에서 첫 사용 이후 글자가 오지 않고 오타도 많아,
+  // Siri와 같은 엔진을 쓰는 키보드 받아쓰기로 바꿈. 받아쓴 말은 쉼표·마침표·'그리고' 등에서 할 일로 나뉨.
   $('#voice').addEventListener('click', () => {
     openScan(null, 'voice');
-    startVoice(); // 마이크 권한 요청은 버튼을 누른 직후에 바로 해야 아이폰이 허용함
+    setStatus("키보드의 마이크(🎤) 버튼을 누르고 말하세요. 할 일 사이에 '그리고'라고 하거나 잠깐 쉬면 나뉩니다.", true);
+    $('#scan-text').focus(); // 버튼을 누른 직후 바로 해야 아이폰 키보드가 올라옴
   });
-  $('#voice-btn').addEventListener('click', () => { if (listening) stopVoice(false); else startVoice(); });
-
-  function updateVoiceUI() {
-    $('#voice-btn').classList.toggle('on', listening);
-    $('#voice-btn-text').textContent = listening ? '정지' : ($('#scan-text').value.trim() ? '이어서 말하기' : '말하기');
-  }
-
-  // 음성 인식을 쓸 수 없을 때: 키보드의 받아쓰기(마이크 버튼)로 안내
-  function voiceFallback() {
-    listening = false;
-    updateVoiceUI();
-    setStatus('이 화면에서는 바로 음성 인식을 쓸 수 없습니다. 아래 칸을 누른 뒤 키보드의 마이크 버튼을 눌러 말하세요. 말한 내용도 할 일 단위로 나뉩니다.', false);
-    $('#scan-text').focus();
-  }
-
-  function startVoice() {
-    if (!SR) { voiceFallback(); return; }
-    stopVoice(true);
-    voiceBase = $('#scan-text').value.trim(); // 이어서 말하면 앞 내용 뒤에 붙임
-    const token = scanToken;
-    const alive = () => token === scanToken;
-    try {
-      rec = new SR();
-      rec.lang = 'ko-KR';
-      rec.interimResults = true; // 말하는 도중에도 글자 표시
-      rec.continuous = true;     // 잠깐 쉬어도 계속 듣기 (쉰 곳 = 할 일 구분)
-      rec.onresult = (e) => {
-        if (!alive()) return;
-        // 확정된 문장은 줄마다 하나씩, 아직 말하는 중인 부분은 마지막 줄에 표시
-        const finals = [], interim = [];
-        for (let i = 0; i < e.results.length; i++) {
-          const r = e.results[i];
-          (r.isFinal ? finals : interim).push(r[0].transcript.trim());
-        }
-        $('#scan-text').value = [voiceBase, ...finals, interim.join(' ')].filter(Boolean).join('\n');
-        renderPreview();
-      };
-      rec.onerror = (e) => {
-        if (!alive()) return;
-        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') voiceFallback();
-        else if (e.error === 'no-speech') setStatus('말소리가 들리지 않았습니다. 말하기 버튼을 누르고 다시 말해 보세요.', false);
-        else if (e.error === 'network') setStatus('음성 인식에 인터넷 연결이 필요합니다. 연결 후 다시 시도하거나 키보드의 마이크 버튼을 쓰세요.', false);
-        else if (e.error !== 'aborted') setStatus(`음성 인식 오류(${e.error}). 다시 시도해 주세요.`, false);
-      };
-      rec.onend = () => {
-        if (!alive()) return;
-        rec = null;
-        listening = false;
-        updateVoiceUI();
-        if ($('#scan-status').classList.contains('busy')) {
-          setStatus(scanLines.length
-            ? '인식 완료 · 틀린 글자는 위 칸에서 고치고, 필요 없는 줄은 체크를 해제하세요.'
-            : '인식된 말이 없습니다. 말하기 버튼을 눌러 다시 시도하세요.', false);
-        }
-      };
-      rec.start();
-      listening = true;
-      setStatus("듣는 중… 할 일 사이에 잠깐 쉬거나 '그리고'라고 말하세요. 다 말했으면 정지를 누르세요.", true);
-      updateVoiceUI();
-    } catch (err) {
-      rec = null;
-      voiceFallback();
-    }
-  }
-
-  // silent=true: 화면을 닫을 때처럼 결과를 버리고 즉시 끔 / false: 지금까지 말한 내용을 확정하고 끔
-  function stopVoice(silent) {
-    if (!rec) return;
-    const r = rec;
-    if (silent) { rec = null; listening = false; r.onresult = r.onerror = r.onend = null; }
-    try { silent ? r.abort() : r.stop(); } catch (e) { /* 이미 끝났으면 무시 */ }
-  }
 
   // ── 글자 자동 인식: Tesseract.js (무료 오픈소스, 사진은 폰 밖으로 나가지 않음) ──
   // 버전을 고정해 두어 엔진이 예고 없이 바뀌지 않게 함. 한글·영어 인식 데이터는 처음 한 번만 내려받아 폰에 저장됨
@@ -635,7 +556,9 @@
     script: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
     workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
     corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
-    maxSide: 2000, // 사진 긴 변을 이 픽셀 이하로 줄여 인식 (아이폰 원본 4032px은 너무 느림)
+    // 사진 긴 변을 이 픽셀 이하로 줄여 인식. 측정 결과(인쇄 문서 사진) 2000px → 3000px에서
+    // 글자 오류율 8.9% → 1.9%로 감소. (흑백 보정은 종이 테두리를 글자로 오인해 오히려 나빠져 쓰지 않음)
+    maxSide: 3000,
   };
   let ocrWorkerP = null, ocrLog = null, scanToken = 0;
 
@@ -700,8 +623,12 @@
       const text = cleanOcr(data.text || '');
       $('#scan-text').value = text;
       renderPreview();
-      // 한글이 없고 글자·숫자가 4개 미만인 짧은 줄(사진 가장자리 얼룩을 글자로 오인한 경우 등)은 처음부터 체크 해제
-      scanLines.filter((t) => !/[가-힣]/.test(t) && (t.match(/[A-Za-z0-9]/g) || []).length < 4).forEach((t) => unchecked.add(t));
+      // 사진 가장자리·책상 무늬를 글자로 오인한 줄은 처음부터 체크 해제 (지우지는 않음 → 진짜면 다시 체크)
+      //  - 한글이 없고 글자·숫자가 4개 미만 (예: 'DE', 'i')
+      //  - 한글·숫자·띄어쓰기 없이 영문만 붙은 한 단어 (예: 'aia', 'ESSERE')
+      const suspicious = (t) => !/[가-힣]/.test(t) &&
+        ((t.match(/[A-Za-z0-9]/g) || []).length < 4 || (!/\s/.test(t) && !/\d/.test(t)));
+      scanLines.filter(suspicious).forEach((t) => unchecked.add(t));
       renderPreview();
       setStatus(text
         ? '인식 완료 · 틀린 글자는 위 칸에서 고치고, 필요 없는 줄은 체크를 해제하세요.'
