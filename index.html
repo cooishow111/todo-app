@@ -68,7 +68,12 @@
     font-size: 34px; line-height: 1; box-shadow: 0 4px 12px rgba(0,0,0,.25);
     display: flex; align-items: center; justify-content: center; padding: 0; }
   .fab.minus { background: var(--green); color: #fff; }
-  .fab.camera { background: var(--card); color: var(--accent); }
+  .fab.camera, .fab.voice { background: var(--card); color: var(--accent); }
+
+  /* 음성 입력: 듣는 중이면 빨간 '정지' 버튼 */
+  .voice-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+    margin-bottom: 10px; background: var(--bg); color: var(--accent); }
+  .voice-btn.on { background: var(--danger); color: #fff; }
 
   /* 파일 선택 입력은 화면에 보이지 않게 숨김 (버튼으로 대신 엶) */
   .vh { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
@@ -169,10 +174,15 @@
 <main>
   <ul id="list"></ul>
   <p id="empty" class="empty">오른쪽 아래 + 버튼으로 오늘 할 일을 추가하세요.<br>하루 10개 안팎이 적당합니다.</p>
-  <p class="hint">탭: 수정 · 왼쪽으로 밀기: 삭제 · 길게 눌러 끌기: 순서 변경 · − 버튼: 여러 개 선택 삭제 · 카메라: 사진 글자로 여러 개 추가</p>
+  <p class="hint">탭: 수정 · 왼쪽으로 밀기: 삭제 · 길게 눌러 끌기: 순서 변경 · − 버튼: 여러 개 선택 삭제 · 카메라: 사진 글자로 여러 개 추가 · 마이크: 말로 여러 개 추가</p>
 </main>
 
 <div class="fab-group">
+  <button type="button" id="voice" class="fab voice" aria-label="음성으로 할 일 추가">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/>
+    </svg>
+  </button>
   <button type="button" id="camera" class="fab camera" aria-label="사진으로 할 일 추가">
     <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.8l1.4-2h6.6l1.4 2h1.8A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/>
@@ -222,12 +232,17 @@
 
 <!-- 글자로 할 일 여러 개 추가: 사진 보기 + 붙여넣기 칸 + 줄별 미리보기 -->
 <section id="scan" class="sheet" role="dialog" aria-label="글자로 할 일 추가">
-  <h2>글자로 할 일 추가</h2>
+  <h2 id="scan-title">글자로 할 일 추가</h2>
   <div id="scan-photo" hidden>
     <img id="scan-img" alt="선택한 사진">
   </div>
-  <!-- 자동 인식 진행 상태 (준비 중 → 인식 중 % → 완료/실패) -->
+  <!-- 자동 인식 진행 상태 (사진: 준비 중 → 인식 중 % → 완료 / 음성: 듣는 중 → 완료) -->
   <p id="scan-status" class="scan-status" hidden></p>
+  <!-- 음성 모드에서만 보이는 말하기/정지 버튼 -->
+  <button type="button" id="voice-btn" class="btn voice-btn" hidden>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+    <span id="voice-btn-text">말하기</span>
+  </button>
   <textarea id="scan-text" rows="4"></textarea>
   <p id="scan-head" class="preview-head" hidden></p>
   <ul id="scan-preview"></ul>
@@ -499,12 +514,19 @@
     if (file) openScan(file);
   }));
 
-  function openScan(file) {
+  // mode: 'photo'(사진 자동 인식) / 'voice'(음성) / 'text'(붙여넣기·텍스트 스캔)
+  let scanMode = 'text';
+  function openScan(file, mode) {
     cleanupScan();
+    scanMode = file ? 'photo' : (mode || 'text');
+    $('#scan-title').textContent = scanMode === 'voice' ? '음성으로 할 일 추가' : '글자로 할 일 추가';
+    $('#voice-btn').hidden = scanMode !== 'voice';
     $('#scan-text').value = '';
-    $('#scan-text').placeholder = file
-      ? '인식된 글자가 여기에 표시됩니다 (틀린 글자는 고칠 수 있음)'
-      : "여기에 붙여 넣기\n또는 이 칸을 길게 눌러 '텍스트 스캔'으로 바로 찍기";
+    $('#scan-text').placeholder = {
+      photo: '인식된 글자가 여기에 표시됩니다 (틀린 글자는 고칠 수 있음)',
+      voice: '말한 내용이 여기에 표시됩니다 (틀린 글자는 고칠 수 있음)',
+      text: "여기에 붙여 넣기\n또는 이 칸을 길게 눌러 '텍스트 스캔'으로 바로 찍기",
+    }[scanMode];
     unchecked.clear();
     if (file) { scanUrl = URL.createObjectURL(file); $('#scan-img').src = scanUrl; }
     $('#scan-photo').hidden = !file;
@@ -515,6 +537,7 @@
   }
   function cleanupScan() {
     scanToken++; // 진행 중인 인식 결과는 버림
+    stopVoice(true); // 듣는 중이었다면 마이크 끄기
     if (scanUrl) { URL.revokeObjectURL(scanUrl); scanUrl = null; }
     $('#scan-img').removeAttribute('src');
   }
@@ -523,6 +546,87 @@
     el.hidden = !text;
     el.textContent = text;
     el.classList.toggle('busy', !!busy);
+  }
+
+  // ── 음성 인식: 아이폰(Safari)의 음성 인식 기능 사용, 한국어 ──
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null, listening = false, voiceBase = '';
+
+  $('#voice').addEventListener('click', () => {
+    openScan(null, 'voice');
+    startVoice(); // 마이크 권한 요청은 버튼을 누른 직후에 바로 해야 아이폰이 허용함
+  });
+  $('#voice-btn').addEventListener('click', () => { if (listening) stopVoice(false); else startVoice(); });
+
+  function updateVoiceUI() {
+    $('#voice-btn').classList.toggle('on', listening);
+    $('#voice-btn-text').textContent = listening ? '정지' : ($('#scan-text').value.trim() ? '이어서 말하기' : '말하기');
+  }
+
+  // 음성 인식을 쓸 수 없을 때: 키보드의 받아쓰기(마이크 버튼)로 안내
+  function voiceFallback() {
+    listening = false;
+    updateVoiceUI();
+    setStatus('이 화면에서는 바로 음성 인식을 쓸 수 없습니다. 아래 칸을 누른 뒤 키보드의 마이크 버튼을 눌러 말하세요. 말한 내용도 할 일 단위로 나뉩니다.', false);
+    $('#scan-text').focus();
+  }
+
+  function startVoice() {
+    if (!SR) { voiceFallback(); return; }
+    stopVoice(true);
+    voiceBase = $('#scan-text').value.trim(); // 이어서 말하면 앞 내용 뒤에 붙임
+    const token = scanToken;
+    const alive = () => token === scanToken;
+    try {
+      rec = new SR();
+      rec.lang = 'ko-KR';
+      rec.interimResults = true; // 말하는 도중에도 글자 표시
+      rec.continuous = true;     // 잠깐 쉬어도 계속 듣기 (쉰 곳 = 할 일 구분)
+      rec.onresult = (e) => {
+        if (!alive()) return;
+        // 확정된 문장은 줄마다 하나씩, 아직 말하는 중인 부분은 마지막 줄에 표시
+        const finals = [], interim = [];
+        for (let i = 0; i < e.results.length; i++) {
+          const r = e.results[i];
+          (r.isFinal ? finals : interim).push(r[0].transcript.trim());
+        }
+        $('#scan-text').value = [voiceBase, ...finals, interim.join(' ')].filter(Boolean).join('\n');
+        renderPreview();
+      };
+      rec.onerror = (e) => {
+        if (!alive()) return;
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') voiceFallback();
+        else if (e.error === 'no-speech') setStatus('말소리가 들리지 않았습니다. 말하기 버튼을 누르고 다시 말해 보세요.', false);
+        else if (e.error === 'network') setStatus('음성 인식에 인터넷 연결이 필요합니다. 연결 후 다시 시도하거나 키보드의 마이크 버튼을 쓰세요.', false);
+        else if (e.error !== 'aborted') setStatus(`음성 인식 오류(${e.error}). 다시 시도해 주세요.`, false);
+      };
+      rec.onend = () => {
+        if (!alive()) return;
+        rec = null;
+        listening = false;
+        updateVoiceUI();
+        if ($('#scan-status').classList.contains('busy')) {
+          setStatus(scanLines.length
+            ? '인식 완료 · 틀린 글자는 위 칸에서 고치고, 필요 없는 줄은 체크를 해제하세요.'
+            : '인식된 말이 없습니다. 말하기 버튼을 눌러 다시 시도하세요.', false);
+        }
+      };
+      rec.start();
+      listening = true;
+      setStatus("듣는 중… 할 일 사이에 잠깐 쉬거나 '그리고'라고 말하세요. 다 말했으면 정지를 누르세요.", true);
+      updateVoiceUI();
+    } catch (err) {
+      rec = null;
+      voiceFallback();
+    }
+  }
+
+  // silent=true: 화면을 닫을 때처럼 결과를 버리고 즉시 끔 / false: 지금까지 말한 내용을 확정하고 끔
+  function stopVoice(silent) {
+    if (!rec) return;
+    const r = rec;
+    if (silent) { rec = null; listening = false; r.onresult = r.onerror = r.onend = null; }
+    try { silent ? r.abort() : r.stop(); } catch (e) { /* 이미 끝났으면 무시 */ }
   }
 
   // ── 글자 자동 인식: Tesseract.js (무료 오픈소스, 사진은 폰 밖으로 나가지 않음) ──
@@ -621,8 +725,18 @@
     return out;
   }
 
+  // 말은 줄바꿈이 없으므로 '쉼표·마침표·물음표', '그리고·그다음·다음으로'에서 할 일을 나눔
+  // (단 3.5, 1,000처럼 숫자 사이의 점·쉼표는 나누지 않음)
+  const SPEECH_JOINER = /(^|\n|\s)(?:그리고|그 ?다음에?|다음으로)(?=\s|$)/g;
+  function splitSpeech(text) {
+    return text
+      .replace(/\s*(?:(?<!\d)[.,]|[.,](?!\d)|[!?。，])\s*/g, '\n')
+      .replace(SPEECH_JOINER, '\n');
+  }
+
   function renderPreview() {
-    scanLines = parseLines($('#scan-text').value);
+    const raw = $('#scan-text').value;
+    scanLines = parseLines(scanMode === 'voice' ? splitSpeech(raw) : raw);
     [...unchecked].forEach((t) => { if (!scanLines.includes(t)) unchecked.delete(t); });
     $('#scan-preview').innerHTML = scanLines.map((t, i) => `
       <li${unchecked.has(t) ? ' class="off"' : ''}>

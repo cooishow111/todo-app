@@ -1,6 +1,6 @@
 // 서비스 워커: 앱 파일을 폰에 저장해 두고, 인터넷이 없어도 저장본으로 앱을 엶.
 // ※ index.html 등을 수정해서 다시 올릴 때는 아래 CACHE 버전 숫자를 올려야 폰에 새 버전이 반영됨.
-const CACHE = 'todo-app-v4';
+const CACHE = 'todo-app-v5';
 // 글자 인식 엔진(버전 고정 파일)은 앱 버전과 따로 보관 → 앱을 업데이트해도 다시 내려받지 않음
 const OCR_CACHE = 'ocr-engine-5.1.1';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
